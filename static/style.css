@@ -1,0 +1,235 @@
+/* ----------------------------------------------------------------------
+   Multi-Chart Dashboard — dark, TradingView-ish theme
+   ---------------------------------------------------------------------- */
+
+:root {
+  --bg:        #0b0e11;
+  --panel:     #131722;
+  --panel-2:   #1c2230;
+  --border:    #2a2e39;
+  --text:      #d1d4dc;
+  --text-dim:  #787b86;
+  --up:        #26a69a;
+  --down:      #ef5350;
+  --accent:    #2962ff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: .2px;
+}
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.count-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: .6px;
+}
+.controls select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding-left: 8px;
+}
+.status .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  display: inline-block;
+}
+.status.live .dot { background: var(--up); box-shadow: 0 0 6px var(--up); }
+.status.down .dot { background: var(--down); }
+.status.open .dot  { background: var(--up); box-shadow: 0 0 6px var(--up); }
+.status.closed .dot { background: var(--down); }
+.status { border: 1px solid var(--border); border-radius: 14px; padding: 3px 9px 3px 7px; }
+
+/* ---------- responsive grid layouts ---------- */
+.grid {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 1px;
+  background: var(--border);   /* gap lines */
+  min-height: 0;
+}
+.grid-1 { grid-template-columns: 1fr;                 grid-template-rows: 1fr; }
+.grid-2 { grid-template-columns: 1fr 1fr;             grid-template-rows: 1fr; }
+.grid-4 { grid-template-columns: 1fr 1fr;             grid-template-rows: 1fr 1fr; }
+.grid-6 { grid-template-columns: 1fr 1fr 1fr;         grid-template-rows: 1fr 1fr; }
+.grid-8 { grid-template-columns: 1fr 1fr 1fr 1fr;     grid-template-rows: 1fr 1fr; }
+
+/* Narrow screens: collapse multi-column layouts so panes stay usable. */
+@media (max-width: 1100px) {
+  .grid-6, .grid-8 { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
+  .grid-4          { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
+}
+@media (max-width: 680px) {
+  .grid-2, .grid-4, .grid-6, .grid-8 {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    overflow-y: auto;
+  }
+  .pane { min-height: 320px; }
+}
+
+/* ---------- a single pane ---------- */
+.pane {
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.pane-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.pane-head select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-size: 12px;
+  max-width: 150px;
+}
+.pane-head .sel-timeframe { max-width: 70px; }
+.indicators {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .5px;
+  cursor: pointer;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 8px;
+}
+.indicators:hover { color: var(--text); border-color: var(--accent); }
+.indicators.active { color: var(--accent); border-color: var(--accent); }
+
+/* ---------- colour-coded ticker bar ---------- */
+.ticker {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+  transition: background-color .25s ease, color .25s ease;
+}
+.ticker-sym   { color: var(--text-dim); font-weight: 600; }
+.ticker-price { font-weight: 700; }
+.ticker-chg   { font-size: 11px; }
+
+.ticker.ticker-up   { background: rgba(38,166,154,.18); color: var(--up); }
+.ticker.ticker-up   .ticker-price,
+.ticker.ticker-up   .ticker-sym { color: var(--up); }
+.ticker.ticker-down { background: rgba(239,83,80,.18); color: var(--down); }
+.ticker.ticker-down .ticker-price,
+.ticker.ticker-down .ticker-sym { color: var(--down); }
+
+/* ---------- chart area ---------- */
+.chart-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+.chart {
+  position: absolute;
+  inset: 0;
+}
+
+/* ---------- indicator panel (slides over the chart, left side) ---------- */
+.indicator-panel {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 230px;
+  max-width: 70%;
+  background: rgba(19, 23, 34, 0.97);
+  border-right: 1px solid var(--border);
+  z-index: 20;
+  overflow-y: auto;
+  padding: 8px 0 16px;
+  box-shadow: 4px 0 18px rgba(0,0,0,.45);
+}
+.indicator-panel[hidden] { display: none; }
+
+.ind-group-title {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 10px 14px 4px;
+  text-transform: uppercase;
+}
+.ind-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 12.5px;
+  user-select: none;
+}
+.ind-row:hover { background: var(--panel-2); }
+.ind-row input { accent-color: var(--accent); cursor: pointer; margin: 0; }
+.ind-swatch {
+  width: 11px; height: 11px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+.ind-row label { cursor: pointer; flex: 1 1 auto; }
+
+/* scrollbar polish */
+.indicator-panel::-webkit-scrollbar { width: 8px; }
+.indicator-panel::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 4px; }
