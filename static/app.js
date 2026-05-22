@@ -37,84 +37,56 @@ function saveState() {
 /* =====================================================================
    Indicator catalogue
    ---------------------------------------------------------------------
-   Each def declares how it is drawn (_type) and a compute() that turns
-   candles into plottable data (math lives in indicators.js / IND.*).
+   Indicators are NOT defined here. Each lives in its own self-contained
+   module under static/indicators/<name>.js and default-exports a def:
+
+     { id, name, category, swatch, type, styles?, guides?, hasHist?,
+       histFormat?, compute(candles) }
+
+   where `type` is one of:
      overlayLines : one or more lines on the price scale
      lower        : lines (+ optional histogram) in a stacked sub-pane
      markers      : symbols on the candles (Parabolic SAR, Fair Value Gaps)
      priceLines   : horizontal levels (Pivot Points, Volume Profile)
-   ===================================================================== */
-const INDICATOR_GROUPS = [
-  { group: "Moving Averages", items: [
-    { id: "sma20",  label: "SMA (20)",  swatch: "#2962ff", _type: "overlayLines",
-      styles: { l: { color: "#2962ff", width: 2 } }, compute: c => ({ l: IND.sma(c, 20) }) },
-    { id: "sma50",  label: "SMA (50)",  swatch: "#ff9800", _type: "overlayLines",
-      styles: { l: { color: "#ff9800", width: 2 } }, compute: c => ({ l: IND.sma(c, 50) }) },
-    { id: "sma200", label: "SMA (200)", swatch: "#ef5350", _type: "overlayLines",
-      styles: { l: { color: "#ef5350", width: 2 } }, compute: c => ({ l: IND.sma(c, 200) }) },
-    { id: "ema20",  label: "EMA (20)",  swatch: "#26a69a", _type: "overlayLines",
-      styles: { l: { color: "#26a69a", width: 2 } }, compute: c => ({ l: IND.ema(c, 20) }) },
-    { id: "ema50",  label: "EMA (50)",  swatch: "#ab47bc", _type: "overlayLines",
-      styles: { l: { color: "#ab47bc", width: 2 } }, compute: c => ({ l: IND.ema(c, 50) }) },
-    { id: "ema200", label: "EMA (200)", swatch: "#ec407a", _type: "overlayLines",
-      styles: { l: { color: "#ec407a", width: 2 } }, compute: c => ({ l: IND.ema(c, 200) }) },
-    { id: "vwap",   label: "VWAP",      swatch: "#ffd54f", _type: "overlayLines",
-      styles: { l: { color: "#ffd54f", width: 2 } }, compute: c => ({ l: IND.vwap(c) }) },
-  ]},
-  { group: "Bands & Channels", items: [
-    { id: "bb", label: "Bollinger (20, 2)", swatch: "#b0b3b8", _type: "overlayLines",
-      styles: { upper: { color: "#b0b3b8", width: 1 }, middle: { color: "#b0b3b8", width: 1, style: 2 }, lower: { color: "#b0b3b8", width: 1 } },
-      compute: c => IND.bollinger(c, 20, 2) },
-    { id: "donchian", label: "Donchian (20)", swatch: "#26c6da", _type: "overlayLines",
-      styles: { upper: { color: "#26c6da", width: 1 }, middle: { color: "#26c6da", width: 1, style: 2 }, lower: { color: "#26c6da", width: 1 } },
-      compute: c => IND.donchian(c, 20) },
-    { id: "keltner", label: "Keltner (20, 1.5)", swatch: "#ec407a", _type: "overlayLines",
-      styles: { upper: { color: "#ec407a", width: 1 }, middle: { color: "#ec407a", width: 1, style: 2 }, lower: { color: "#ec407a", width: 1 } },
-      compute: c => IND.keltner(c, 20, 1.5) },
-  ]},
-  { group: "Trend", items: [
-    { id: "psar", label: "Parabolic SAR", swatch: "#ffa726", _type: "markers",
-      compute: c => IND.psar(c).dots.map(d => ({ time: d.time, position: d.up ? "belowBar" : "aboveBar", color: "#ffa726", shape: "circle" })) },
-    { id: "supertrend", label: "Supertrend (10, 3)", swatch: "#ab47bc", _type: "overlayLines",
-      styles: { up: { color: "#26a69a", width: 2 }, down: { color: "#ef5350", width: 2 } },
-      compute: c => IND.supertrend(c, 10, 3) },
-    { id: "ichimoku", label: "Ichimoku Cloud", swatch: "#29b6f6", _type: "overlayLines",
-      styles: { tenkan: { color: "#2962ff", width: 1 }, kijun: { color: "#ef5350", width: 1 }, senkouA: { color: "#26a69a", width: 1 }, senkouB: { color: "#ef5350", width: 1 }, chikou: { color: "#b0b3b8", width: 1, style: 2 } },
-      compute: c => IND.ichimoku(c) },
-    { id: "pivots", label: "Pivot Points", swatch: "#b0b3b8", _type: "priceLines",
-      compute: c => IND.pivots(c) },
-  ]},
-  { group: "Price Action", items: [
-    { id: "fvg", label: "Fair Value Gaps", swatch: "#ffd54f", _type: "markers",
-      compute: c => IND.fvg(c) },
-    { id: "vp", label: "Volume Profile (POC/VA)", swatch: "#ffb74d", _type: "priceLines",
-      compute: c => IND.volumeProfile(c) },
-  ]},
-  { group: "Volume", items: [
-    { id: "volume", label: "Volume", swatch: "#787b86", _type: "lower", hasHist: true,
-      histFormat: { type: "volume" }, styles: { lines: {} },
-      compute: c => ({ hist: IND.volume(c) }) },
-  ]},
-  { group: "Oscillators", items: [
-    { id: "rsi", label: "RSI (14)", swatch: "#ab47bc", _type: "lower",
-      styles: { lines: { rsi: { color: "#ab47bc", width: 2 } } },
-      guides: [{ value: 70, color: "#3a3f4b" }, { value: 30, color: "#3a3f4b" }],
-      compute: c => ({ lines: { rsi: IND.rsi(c, 14) } }) },
-    { id: "macd", label: "MACD (12, 26, 9)", swatch: "#29b6f6", _type: "lower", hasHist: true,
-      styles: { lines: { macd: { color: "#2962ff", width: 2 }, signal: { color: "#ff9800", width: 1 } } },
-      compute: c => { const m = IND.macd(c); return { lines: { macd: m.macd, signal: m.signal }, hist: m.hist }; } },
-    { id: "stoch", label: "Stochastic (14, 3, 3)", swatch: "#ff9800", _type: "lower",
-      styles: { lines: { k: { color: "#2962ff", width: 2 }, d: { color: "#ff9800", width: 1 } } },
-      guides: [{ value: 80, color: "#3a3f4b" }, { value: 20, color: "#3a3f4b" }],
-      compute: c => { const s = IND.stochastic(c); return { lines: { k: s.k, d: s.d } }; } },
-  ]},
-];
 
-const DEF_BY_ID = (() => {
-  const m = new Map();
-  INDICATOR_GROUPS.forEach(g => g.items.forEach(it => m.set(it.id, it)));
-  return m;
-})();
+   loadIndicators() asks the backend (/api/indicators) which module files
+   exist, dynamically import()s each, and fills these two collections.
+   To add an indicator: drop a file in static/indicators/ — that's it.
+   ===================================================================== */
+let INDICATOR_DEFS = [];          // [def, ...] sorted by category, name
+const DEF_BY_ID = new Map();      // id -> def
+
+async function loadIndicators() {
+  let files = [];
+  try {
+    files = await (await fetch("/api/indicators")).json();
+  } catch (e) {
+    console.warn("could not list indicators", e);
+    return;
+  }
+  const defs = [];
+  await Promise.all(files.map(async (file) => {
+    try {
+      const mod = await import(`/static/indicators/${file}`);
+      const def = mod.default;
+      if (def && def.id && typeof def.compute === "function") {
+        def._file = file;
+        defs.push(def);
+      } else {
+        console.warn(`indicator "${file}" has no valid default export`);
+      }
+    } catch (e) {
+      console.warn(`failed to load indicator "${file}"`, e);
+    }
+  }));
+  defs.sort((a, b) =>
+    (a.category || "").localeCompare(b.category || "") ||
+    (a.name || a.id).localeCompare(b.name || b.id));
+  INDICATOR_DEFS = defs;
+  DEF_BY_ID.clear();
+  defs.forEach(d => DEF_BY_ID.set(d.id, d));
+  console.log(`loaded ${defs.length} indicators`);
+}
 
 /* =====================================================================
    Shared Hyperliquid websocket (multiplexed, ref-counted, auto-reconnect)
@@ -402,41 +374,81 @@ function wirePolling(pane, intervalMs) {
 }
 
 /* =====================================================================
-   Indicators — panel UI
+   Indicators — panel UI (TradingView-style search)
    ===================================================================== */
 function buildPanel(pane) {
   const p = pane.panelEl;
   p.innerHTML = "";
-  INDICATOR_GROUPS.forEach(group => {
-    const title = document.createElement("div");
-    title.className = "ind-group-title";
-    title.textContent = group.group;
-    p.appendChild(title);
-    group.items.forEach(def => {
-      const row = document.createElement("label");
-      row.className = "ind-row";
-      const cb = document.createElement("input");
-      cb.type = "checkbox"; cb.dataset.id = def.id;
-      cb.checked = pane.activeIndicators.includes(def.id);
-      cb.onchange = () => {
-        if (cb.checked) addIndicator(pane, def.id);
-        else removeIndicator(pane, def.id);
-        saveState();
-      };
-      const sw = document.createElement("span");
-      sw.className = "ind-swatch"; sw.style.background = def.swatch;
-      const txt = document.createElement("span");
-      txt.textContent = def.label;
-      row.appendChild(cb); row.appendChild(sw); row.appendChild(txt);
-      p.appendChild(row);
-    });
+
+  const search = document.createElement("div");
+  search.className = "ind-search";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Search indicators…";
+  input.oninput = () => renderIndList(pane);
+  input.onclick = (e) => e.stopPropagation();
+  search.appendChild(input);
+  p.appendChild(search);
+
+  const list = document.createElement("div");
+  list.className = "ind-list";
+  p.appendChild(list);
+
+  pane.panelInput = input;
+  pane.panelList = list;
+  renderIndList(pane);
+}
+
+function renderIndList(pane) {
+  const list = pane.panelList;
+  if (!list) return;
+  const q = (pane.panelInput.value || "").trim().toLowerCase();
+  list.innerHTML = "";
+
+  const matches = INDICATOR_DEFS.filter(def =>
+    !q ||
+    (def.name || def.id).toLowerCase().includes(q) ||
+    (def.category || "").toLowerCase().includes(q));
+
+  if (!matches.length) {
+    const empty = document.createElement("div");
+    empty.className = "ind-empty";
+    empty.textContent = INDICATOR_DEFS.length ? "No matches" : "No indicators found";
+    list.appendChild(empty);
+    return;
+  }
+
+  let lastCat = null;
+  matches.forEach(def => {
+    if (def.category && def.category !== lastCat) {
+      lastCat = def.category;
+      const title = document.createElement("div");
+      title.className = "ind-group-title";
+      title.textContent = def.category;
+      list.appendChild(title);
+    }
+    const active = pane.activeIndicators.includes(def.id);
+    const row = document.createElement("label");
+    row.className = "ind-row" + (active ? " active" : "");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.dataset.id = def.id; cb.checked = active;
+    cb.onchange = () => {
+      if (cb.checked) addIndicator(pane, def.id);
+      else removeIndicator(pane, def.id);
+      row.classList.toggle("active", cb.checked);
+      saveState();
+    };
+    const sw = document.createElement("span");
+    sw.className = "ind-swatch"; sw.style.background = def.swatch || "#787b86";
+    const txt = document.createElement("span");
+    txt.textContent = def.name || def.id;
+    row.appendChild(cb); row.appendChild(sw); row.appendChild(txt);
+    list.appendChild(row);
   });
 }
 
 function syncPanelChecks(pane) {
-  pane.panelEl.querySelectorAll("input[type=checkbox]").forEach(cb => {
-    cb.checked = pane.activeIndicators.includes(cb.dataset.id);
-  });
+  renderIndList(pane);
 }
 
 function togglePanel(pane) {
@@ -445,6 +457,7 @@ function togglePanel(pane) {
   PANES.forEach(p => { if (p !== pane) { p.panelEl.hidden = true; p.indBtn.classList.remove("active"); } });
   pane.panelEl.hidden = !willOpen;
   pane.indBtn.classList.toggle("active", willOpen);
+  if (willOpen && pane.panelInput) { pane.panelInput.value = ""; renderIndList(pane); setTimeout(() => pane.panelInput.focus(), 0); }
 }
 
 // click anywhere else closes open panels
@@ -482,7 +495,7 @@ function createInst(pane, def) {
     lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
   });
 
-  if (def._type === "overlayLines") {
+  if (def.type === "overlayLines") {
     const lineSeries = {};
     Object.entries(def.styles).forEach(([name, st]) => {
       lineSeries[name] = chart.addLineSeries({ ...lineOpts(st), priceScaleId: "right" });
@@ -490,7 +503,7 @@ function createInst(pane, def) {
     return { def, type: "overlay", lineSeries };
   }
 
-  if (def._type === "lower") {
+  if (def.type === "lower") {
     const scaleId = "lower_" + def.id;
     const lines = (def.styles && def.styles.lines) || {};
     const lineSeries = {};
@@ -516,8 +529,8 @@ function createInst(pane, def) {
     return inst;
   }
 
-  if (def._type === "markers")    return { def, type: "markers" };
-  if (def._type === "priceLines") return { def, type: "priceLines", priceLines: [] };
+  if (def.type === "markers")    return { def, type: "markers" };
+  if (def.type === "priceLines") return { def, type: "priceLines", priceLines: [] };
   return { def, type: "noop" };
 }
 
@@ -665,6 +678,9 @@ async function boot() {
       '<p style="padding:24px;color:#787b86">No data sources available. Is the backend running?</p>';
     return;
   }
+
+  // discover + dynamically import all indicator modules before building panes
+  await loadIndicators();
 
   updateMarketStatus();
   setInterval(updateMarketStatus, 30000);

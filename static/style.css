@@ -204,6 +204,31 @@ body {
 }
 .indicator-panel[hidden] { display: none; }
 
+.ind-search {
+  position: sticky;
+  top: 0;
+  background: rgba(19, 23, 34, 0.99);
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  z-index: 2;
+}
+.ind-search input {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 9px;
+  font-size: 12.5px;
+  outline: none;
+}
+.ind-search input:focus { border-color: var(--accent); }
+.ind-empty {
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 16px 14px;
+}
+
 .ind-group-title {
   color: var(--text-dim);
   font-size: 10px;
@@ -212,6 +237,7 @@ body {
   padding: 10px 14px 4px;
   text-transform: uppercase;
 }
+.ind-row.active { background: rgba(41, 98, 255, 0.12); }
 .ind-row {
   display: flex;
   align-items: center;

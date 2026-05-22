@@ -3,10 +3,11 @@ app.py
 ======
 Thin Flask backend for the multi-chart dashboard.
 
-It does three jobs:
+It does these jobs:
   1. serves the dashboard page + static assets
   2. tells the browser which data sources exist (/api/sources)
-  3. proxies history + quotes so the browser never hits CORS walls
+  3. lists the auto-discovered indicator modules (/api/indicators)
+  4. proxies history + quotes so the browser never hits CORS walls
      (Yahoo and Hyperliquid REST do not send permissive CORS headers)
 
 Live crypto candles do NOT go through here -- the browser talks to
@@ -18,6 +19,8 @@ Run:
     -> http://127.0.0.1:5000/
 """
 
+import os
+
 from flask import Flask, jsonify, request, render_template
 
 import data_source as ds
@@ -28,6 +31,24 @@ app = Flask(__name__)
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/api/indicators")
+def api_indicators():
+    """
+    Auto-discovery: list every indicator module in static/indicators/.
+    Files whose name starts with "_" (shared libs) are skipped. Drop a new
+    <name>.js in that folder and it shows up in the UI on next reload --
+    no central registry to edit.
+    """
+    folder = os.path.join(app.static_folder, "indicators")
+    files = []
+    if os.path.isdir(folder):
+        files = sorted(
+            f for f in os.listdir(folder)
+            if f.endswith(".js") and not f.startswith("_")
+        )
+    return jsonify(files)
 
 
 @app.route("/api/sources")

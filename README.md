@@ -11,15 +11,19 @@ runs on `127.0.0.1`.
 
 ```
 Finance_Plot/
-├── app.py              # Flask backend: serves the page + /api/{sources,history,quote}
+├── app.py              # Flask backend: page + /api/{sources,history,quote,indicators}
 ├── data_source.py      # the swappable data layer — one function per broker
 ├── requirements.txt
 ├── templates/
 │   └── index.html      # dashboard shell + pane template
 └── static/
-    ├── style.css       # dark theme, responsive 1/2/4/6/8 grid, indicator panel
-    ├── indicators.js   # pure technical-analysis math (no charting)
-    └── app.js          # charts, shared HL websocket, polling, indicators, persistence
+    ├── style.css       # dark theme, responsive 1/2/4/6/8 grid, indicator search panel
+    ├── app.js          # charts, shared HL websocket, polling, indicator engine, persistence
+    └── indicators/     # one self-contained module per indicator (auto-discovered)
+        ├── _lib.js     # shared TA primitives (SMA/EMA/ATR/…); _-prefixed = not an indicator
+        ├── sma20.js    # …each file default-exports one indicator def
+        ├── rsi.js
+        └── …
 ```
 
 ## Key design points
@@ -55,12 +59,11 @@ Finance_Plot/
 
 ## Indicators
 
-Click **INDICATORS** on any pane to open the panel and tick what you want.
-Indicators are per-pane, recompute live as candles update, and persist across
-reloads. Overlays draw on the price scale; oscillators get their own stacked
-sub-pane below the price (the lower 40 % of the chart is split evenly among
-active oscillators). The math lives in `static/indicators.js`; rendering is
-driven by the `INDICATOR_GROUPS` table in `static/app.js`.
+Click **INDICATORS** on any pane to open the search panel, type to filter, and
+tick what you want — TradingView-style. Indicators are per-pane, recompute live
+as candles update, and persist across reloads. Overlays draw on the price scale;
+oscillators get their own stacked sub-pane below the price (the lower 40 % of the
+chart is split evenly among active oscillators).
 
 | Category | Indicators |
 | --- | --- |
@@ -71,11 +74,46 @@ driven by the `INDICATOR_GROUPS` table in `static/app.js`.
 | Volume | Volume (colour-coded histogram) |
 | Oscillators | RSI (14), MACD (12, 26, 9), Stochastic (14, 3, 3) |
 
-**Add your own indicator:** write the math as a pure function in
-`indicators.js` (takes `candles`, returns `{time, value}` arrays), then add one
-entry to the relevant group in `INDICATOR_GROUPS` (`app.js`) describing how to
-draw it (`overlayLines`, `lower`, `markers`, or `priceLines`). It appears in
-every pane's panel automatically.
+### How the indicator system is wired (modular, auto-discovered)
+
+Each indicator is **one self-contained ES module** in `static/indicators/`. On
+load the backend's `/api/indicators` endpoint lists the folder, and `app.js`
+dynamically `import()`s every file. There is **no central registry** — adding an
+indicator means adding a file, nothing else.
+
+A module default-exports a single object:
+
+```js
+// static/indicators/my_indicator.js
+import { sma } from "./_lib.js";   // borrow shared primitives if useful
+
+export default {
+  id: "my_ind",                    // unique id (persisted in localStorage)
+  name: "My Indicator (20)",       // searchable display name
+  category: "Moving Averages",     // groups results in the search list
+  swatch: "#2962ff",               // colour chip in the panel
+  type: "overlayLines",            // overlayLines | lower | markers | priceLines
+  styles: { l: { color: "#2962ff", width: 2 } },
+  compute: (candles) => ({ l: sma(candles, 20) }),
+};
+```
+
+The four `type` values cover every render shape:
+
+- **`overlayLines`** — one or more lines on the price scale. `compute` returns
+  `{ <styleName>: [{time, value}], … }`.
+- **`lower`** — a stacked sub-pane below price. `compute` returns
+  `{ lines: { <name>: [...] }, hist?: [{time, value, color}] }`. Add
+  `guides: [{value, color}]` for reference levels (e.g. RSI 70/30).
+- **`markers`** — symbols on the candles. `compute` returns an array of
+  `{time, position, color, shape}`.
+- **`priceLines`** — horizontal levels. `compute` returns `{price, color, title}[]`.
+
+**To add an indicator:** drop a `.js` file in `static/indicators/`, restart the
+server (so the folder is re-scanned), refresh the page — it appears in every
+pane's search panel automatically. Shared maths (SMA, EMA, ATR, rolling
+high/low, std-dev) live in `static/indicators/_lib.js`; files whose name starts
+with `_` are skipped by discovery, so put helpers there.
 
 > Notes: Volume / VWAP / Volume Profile need volume data — Hyperliquid and Yahoo
 > both supply it. Volume Profile and Pivot Points are drawn as horizontal levels
