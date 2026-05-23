@@ -259,3 +259,56 @@ body {
 /* scrollbar polish */
 .indicator-panel::-webkit-scrollbar { width: 8px; }
 .indicator-panel::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 4px; }
+
+/* ---------- symbol search picker ---------- */
+.symbol-picker {
+  position: relative;
+  display: inline-block;
+}
+.sel-symbol-input {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 12px;
+  width: 110px;
+  outline: none;
+}
+.sel-symbol-input:focus { border-color: var(--accent); }
+
+.symbol-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 2px;
+  width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: rgba(19, 23, 34, 0.99);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .5);
+  z-index: 50;
+}
+.symbol-results[hidden] { display: none; }
+.symbol-result {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.symbol-result:hover { background: var(--panel-2); }
+.symbol-result .sr-sym { font-weight: 700; color: var(--text); flex: 0 0 auto; }
+.symbol-result .sr-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+}
+.symbol-result .sr-exch { color: var(--text-dim); font-size: 10px; flex: 0 0 auto; }
+.symbol-results::-webkit-scrollbar { width: 8px; }
+.symbol-results::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 4px; }

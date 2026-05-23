@@ -11,8 +11,17 @@ runs on `127.0.0.1`.
 
 ```
 Finance_Plot/
-├── app.py              # Flask backend: page + /api/{sources,history,quote,indicators}
-├── data_source.py      # the swappable data layer — one function per broker
+├── app.py              # Flask backend: page + /api/{sources,history,quote,search,indicators}
+├── data_sources/       # auto-discovered market-data providers (one file per broker)
+│   ├── __init__.py     # facade: get_source/list_sources_meta/get_history/get_quote/search_symbols
+│   ├── registry.py     # filesystem auto-discovery + lazy init
+│   ├── base.py         # contract validation, candle normalization, TTL cache
+│   ├── _http.py        # shared TLS/HTTP infra (curl_cffi, Windows certs, retry/backoff)
+│   └── providers/      # drop a <broker>.py here exporting a SOURCE dict
+│       ├── hyperliquid.py
+│       ├── yahoo_in.py
+│       ├── yahoo_us.py
+│       └── _yahoo_common.py   # shared Yahoo logic (_-prefixed = not a provider)
 ├── requirements.txt
 ├── templates/
 │   └── index.html      # dashboard shell + pane template
@@ -23,13 +32,14 @@ Finance_Plot/
     │   ├── state.js          # SOURCES/PANES/STATE + versioned persistence
     │   ├── util.js           # debounce, price formatting
     │   ├── validate.js       # candle sanitization (NaN/order/dedupe)
-    │   ├── api.js            # backend fetch wrappers
+    │   ├── api.js            # backend fetch wrappers (+ symbol search)
     │   ├── indicatorRegistry.js  # discover + dynamic-import indicator modules
     │   ├── hyperliquid.js    # shared ref-counted websocket
     │   ├── marketStatus.js   # NYSE/NSE open-closed badges
     │   ├── ticker.js         # colour-coded price bar
     │   ├── indicatorEngine.js    # create/draw/remove indicator series (error-isolated)
-    │   ├── indicatorPanel.js     # TradingView-style search panel
+    │   ├── indicatorPanel.js     # TradingView-style indicator search panel
+    │   ├── symbolSearch.js   # type-ahead symbol picker (per pane)
     │   ├── pane.js           # Pane class (chart + realtime + lifecycle/destroy)
     │   └── grid.js           # build/reshape the pane grid
     └── indicators/     # one self-contained module per indicator (auto-discovered)
@@ -45,10 +55,19 @@ still no bundler or build step.
 
 ## Key design points
 
-- **`data_source.py`** — each broker is one function returning a dict
-  (`name`, `label`, `timeframes`, `symbols`, `history`, `quote`, `realtime`).
-  Add a new broker = write one function and add it to `_register_all_sources()`.
-  The backend and the browser pick it up automatically.
+- **`data_sources/` (auto-discovered providers)** — each broker is one file in
+  `data_sources/providers/` exporting a `SOURCE` dict (`name`, `label`,
+  `asset_type`, `timeframes`, `default_symbols`, `capabilities`, `realtime`,
+  and the callables `history`, `quote`, `search`). `registry.py` scans the
+  folder, validates each against the contract (`base.validate_source`), and
+  serves data through normalization + a small TTL cache. Discovery and any
+  network calls are **lazy** (nothing runs at import). Add a broker = drop a
+  file in `providers/` — no central edit.
+- **Dynamic symbol search** — `/api/search?source=&q=` calls each provider's
+  `search(query)` (Yahoo's search API; Hyperliquid filters its perp universe).
+  The frontend symbol box (`modules/symbolSearch.js`) is a debounced type-ahead;
+  an empty query shows the source's curated `default_symbols` as a fallback so a
+  pane always works even if search is unavailable.
 - **Shared Hyperliquid websocket** — the browser opens **one** websocket and
   multiplexes it by `(coin, interval)` with ref-counted subscribe/unsubscribe
   and exponential-backoff auto-reconnect (`static/modules/hyperliquid.js`, the
@@ -56,7 +75,7 @@ still no bundler or build step.
 - **Yahoo has no public stream**, so a 5 s `/api/quote` poll folds the live
   price into the current candle while a 60 s `/api/history` refetch rolls in
   new bars correctly.
-- **Windows hardening** in `data_source.py`:
+- **Windows hardening** in `data_sources/_http.py`:
   - `truststore.inject_into_ssl()` makes Python trust the OS cert store, so
     antivirus TLS interception (AVG, Avast, Kaspersky…) doesn't break HTTPS.
   - The Windows root/intermediate stores are exported to a temp PEM and fed to
@@ -78,19 +97,21 @@ still no bundler or build step.
 
 ## Robustness notes
 
-The frontend is defensive in a few deliberate places so it stays stable during
-long live sessions:
+The app is defensive in a few deliberate places so it stays stable during long
+live sessions:
 
 - **Per-indicator error isolation** — a throwing indicator is caught and logged
   in `indicatorEngine.js`; it never breaks the render loop or the websocket feed.
 - **Explicit pane lifecycle** — `Pane.destroy()` tears down timers, the resize
   observer, the websocket subscription and the chart, and a `destroyed` guard
   stops any late async callback (fetch/poll/socket) touching a disposed chart.
-- **Candle sanitization** — `validate.js` drops NaN/missing fields, sorts by
-  time and de-duplicates before anything is plotted.
+- **Candle sanitization** — both the frontend (`validate.js`) and the backend
+  (`data_sources/base.normalize_candles`) drop NaN/inf/missing fields, enforce
+  ascending UNIX-seconds time, and de-duplicate before anything is plotted.
+- **Provider isolation** — a provider that fails its contract is skipped at
+  discovery, not fatal; HTTP calls have a timeout + exponential backoff.
 - **Debounced resize** — chart resizes are coalesced to avoid relayout storms.
-- **Versioned persistence** — see above; a stale/garbage saved layout can't
-  crash startup.
+- **Versioned persistence** — a stale/garbage saved layout can't crash startup.
 
 ## Indicators
 
@@ -177,10 +198,10 @@ Then open **http://127.0.0.1:5000/**.
 ### Quick sanity check (optional)
 
 ```powershell
-python data_source.py
+python -c "import data_sources as ds; print(ds.list_sources_meta())"
 ```
 
-This prints the registered sources and tries a live Hyperliquid + Yahoo fetch.
+This prints the discovered providers and their metadata (no network needed).
 
 ## Notes & limits
 
@@ -194,20 +215,35 @@ This prints the registered sources and tries a live Hyperliquid + Yahoo fetch.
 
 ## Adding another broker (Alpaca / Binance / Zerodha / Polygon …)
 
-In `data_source.py`:
+Create one file, `data_sources/providers/mybroker.py`, exporting a `SOURCE`:
 
 ```python
-def my_broker_source():
-    return {
-        "name": "mybroker",
-        "label": "My Broker",
-        "timeframes": ["1m", "5m", "1h", "1d"],
-        "symbols": ["AAA", "BBB"],
-        "history": lambda symbol, timeframe: [ {"time":..., "open":..., "high":..., "low":..., "close":...}, ... ],
-        "quote":   lambda symbol: {"price": 123.45},
-        "realtime": {"type": "poll", "interval": 5000},  # or a custom ws type
-    }
+def history(symbol, timeframe):
+    # return [{"time": <unix seconds>, "open":.., "high":.., "low":.., "close":.., "volume":..}, ...]
+    ...
+
+def quote(symbol):
+    return {"price": 123.45}
+
+def search(query):
+    # return [{"symbol": "AAA", "label": "Alpha Inc", "exchange": "XYZ"}, ...]
+    ...
+
+SOURCE = {
+    "name": "mybroker",
+    "label": "My Broker",
+    "asset_type": "equity",                 # crypto | equity | futures | ...
+    "timeframes": ["1m", "5m", "1h", "1d"],
+    "default_symbols": ["AAA", "BBB"],       # shown before the user searches
+    "capabilities": {"search": True, "realtime": False},
+    "realtime": {"type": "poll", "interval": 5000},   # or {"type": "hyperliquid_ws", ...}
+    "history": history,
+    "quote": quote,
+    "search": search,                        # optional; omit to fall back to default_symbols
+}
 ```
 
-then add `my_broker_source()` to the list in `_register_all_sources()`.
-Restart the server and it appears in every pane's source dropdown.
+Restart the server — `registry.py` auto-discovers it and it appears in every
+pane's source dropdown, with search wired up. Shared HTTP/TLS lives in
+`data_sources/_http.py` (`get_json` / `post_json`); files whose name starts
+with `_` are skipped by discovery, so put shared helpers there.

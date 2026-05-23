@@ -33,7 +33,10 @@
     <section class="pane">
       <div class="pane-head">
         <select class="sel-source"></select>
-        <select class="sel-symbol"></select>
+        <div class="symbol-picker">
+          <input class="sel-symbol-input" type="text" placeholder="Symbol" autocomplete="off" spellcheck="false" />
+          <div class="symbol-results" hidden></div>
+        </div>
         <select class="sel-timeframe"></select>
         <button class="indicators" type="button">INDICATORS</button>
         <div class="ticker">

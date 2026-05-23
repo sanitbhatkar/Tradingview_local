@@ -28,3 +28,10 @@ export async function fetchQuote(source, symbol) {
   const j = await getJSON(`/api/quote?${q}`);
   return j;  // { source, symbol, price }
 }
+
+// Dynamic symbol search for a source: returns [{symbol, label, exchange}, ...]
+export async function fetchSearch(source, query) {
+  const q = `source=${encodeURIComponent(source)}&q=${encodeURIComponent(query)}`;
+  const j = await getJSON(`/api/search?${q}`);
+  return j.results || [];
+}

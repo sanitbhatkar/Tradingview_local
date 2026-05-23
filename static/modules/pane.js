@@ -1,8 +1,9 @@
 /* ======================================================================
    pane.js — one chart pane, with an explicit lifecycle
    ----------------------------------------------------------------------
-   A Pane owns its chart, dropdowns, realtime wiring, ticker and the set
-   of active indicators. Key robustness properties:
+   A Pane owns its chart, dropdowns, the symbol search picker, realtime
+   wiring, ticker and the set of active indicators. Key robustness
+   properties:
      * destroy() tears down EVERYTHING (timers, observers, websocket sub,
        chart) so removed panes leave nothing running (#3 lifecycle).
      * `destroyed` guards every async callback so a late fetch/poll/socket
@@ -17,6 +18,7 @@ import { HL } from "./hyperliquid.js";
 import { DEF_BY_ID } from "./indicatorRegistry.js";
 import { addIndicator, refreshIndicators } from "./indicatorEngine.js";
 import { buildPanel, syncPanelChecks, togglePanel } from "./indicatorPanel.js";
+import { attachSymbolPicker } from "./symbolSearch.js";
 import { updateTicker, setTicker } from "./ticker.js";
 import { debounce } from "./util.js";
 
@@ -44,7 +46,8 @@ export class Pane {
 
     this.node = node;
     this.selSource = node.querySelector(".sel-source");
-    this.selSymbol = node.querySelector(".sel-symbol");
+    this.symbolInput = node.querySelector(".sel-symbol-input");
+    this.symbolResults = node.querySelector(".symbol-results");
     this.selTf = node.querySelector(".sel-timeframe");
     this.chartEl = node.querySelector(".chart");
     this.indBtn = node.querySelector(".indicators");
@@ -73,7 +76,6 @@ export class Pane {
 
     // listeners
     this.selSource.onchange = () => { this.fillSymbolTf(); this.applyPane(); };
-    this.selSymbol.onchange = () => { this.symbol = this.selSymbol.value; this.reloadPane(); saveState(); };
     this.selTf.onchange     = () => { this.timeframe = this.selTf.value; this.reloadPane(); saveState(); };
     this.indBtn.onclick = (e) => { e.stopPropagation(); togglePanel(this); };
     this.panelEl.onclick = (e) => e.stopPropagation();
@@ -81,8 +83,10 @@ export class Pane {
     // initial config (restored or sensible default)
     const defaultSrc = (cfg && cfg.source) || SOURCES[0].name;
     this.selSource.value = SOURCES.some(s => s.name === defaultSrc) ? defaultSrc : SOURCES[0].name;
+    this.source = this.selSource.value;
     this.fillSymbolTf(cfg);
     buildPanel(this);
+    attachSymbolPicker(this);
 
     // indicators are created lazily once candles arrive (in reloadPane)
     this.savedIndicators = (cfg && Array.isArray(cfg.indicators)) ? cfg.indicators : [];
@@ -90,22 +94,25 @@ export class Pane {
     this.applyPane();
   }
 
+  // Populate timeframes and set the current symbol (curated default unless
+  // a saved config restores one). The symbol box itself is a search picker.
   fillSymbolTf(cfg) {
     const src = SOURCES.find(s => s.name === this.selSource.value);
-    this.selSymbol.innerHTML = "";
-    src.symbols.forEach(sym => this.selSymbol.add(new Option(sym, sym)));
     this.selTf.innerHTML = "";
     src.timeframes.forEach(tf => this.selTf.add(new Option(tf, tf)));
-    const wantSym = (cfg && cfg.symbol && src.symbols.includes(cfg.symbol)) ? cfg.symbol : src.symbols[0];
-    const wantTf  = (cfg && cfg.timeframe && src.timeframes.includes(cfg.timeframe)) ? cfg.timeframe : src.timeframes[0];
-    this.selSymbol.value = wantSym;
+    const wantTf = (cfg && cfg.timeframe && src.timeframes.includes(cfg.timeframe)) ? cfg.timeframe : src.timeframes[0];
     this.selTf.value = wantTf;
+
+    const defaults = src.symbols || [];
+    const wantSym = (cfg && cfg.symbol) ? cfg.symbol : (defaults[0] || "");
+    this.symbol = wantSym;
+    if (this.symbolInput) this.symbolInput.value = wantSym;
   }
 
   applyPane() {
     this.source = this.selSource.value;
-    this.symbol = this.selSymbol.value;
     this.timeframe = this.selTf.value;
+    // this.symbol is set by fillSymbolTf / the symbol picker
     this.reloadPane();
     saveState();
   }
@@ -116,6 +123,7 @@ export class Pane {
 
     const { source, symbol, timeframe } = this;
     setTicker(this, symbol, null, null, "");
+    if (!symbol) return;                              // nothing selected yet
 
     let candles = [];
     try {

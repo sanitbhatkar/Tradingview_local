@@ -9,6 +9,7 @@ Cross-cutting helpers every provider benefits from:
 Leading concern: keep providers thin and consistent.
 """
 
+import math
 import time
 
 
@@ -51,6 +52,8 @@ def normalize_candles(rows):
             continue
         if t <= 0:
             continue
+        if not all(math.isfinite(x) for x in (o, h, l, c, v)):
+            continue                  # drop NaN / inf values
         # guard against a provider handing back milliseconds
         if t > 10_000_000_000:        # ~ year 2286 in seconds => clearly ms
             t //= 1000
