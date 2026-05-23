@@ -49,8 +49,8 @@
     </section>
   </template>
 
-  <!-- Indicator modules are auto-discovered (/api/indicators) and loaded
-       on demand by app.js via dynamic import(); no static tags needed. -->
-  <script src="/static/app.js"></script>
+  <!-- ES-module entry point. Indicator modules + core modules are imported
+       from here; nothing else needs a <script> tag. -->
+  <script type="module" src="/static/app.js"></script>
 </body>
 </html>

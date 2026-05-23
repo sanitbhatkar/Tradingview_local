@@ -18,13 +18,30 @@ Finance_Plot/
 │   └── index.html      # dashboard shell + pane template
 └── static/
     ├── style.css       # dark theme, responsive 1/2/4/6/8 grid, indicator search panel
-    ├── app.js          # charts, shared HL websocket, polling, indicator engine, persistence
+    ├── app.js          # thin ES-module bootstrap (boot() wires everything)
+    ├── modules/        # the frontend, split into focused ES modules
+    │   ├── state.js          # SOURCES/PANES/STATE + versioned persistence
+    │   ├── util.js           # debounce, price formatting
+    │   ├── validate.js       # candle sanitization (NaN/order/dedupe)
+    │   ├── api.js            # backend fetch wrappers
+    │   ├── indicatorRegistry.js  # discover + dynamic-import indicator modules
+    │   ├── hyperliquid.js    # shared ref-counted websocket
+    │   ├── marketStatus.js   # NYSE/NSE open-closed badges
+    │   ├── ticker.js         # colour-coded price bar
+    │   ├── indicatorEngine.js    # create/draw/remove indicator series (error-isolated)
+    │   ├── indicatorPanel.js     # TradingView-style search panel
+    │   ├── pane.js           # Pane class (chart + realtime + lifecycle/destroy)
+    │   └── grid.js           # build/reshape the pane grid
     └── indicators/     # one self-contained module per indicator (auto-discovered)
         ├── _lib.js     # shared TA primitives (SMA/EMA/ATR/…); _-prefixed = not an indicator
         ├── sma20.js    # …each file default-exports one indicator def
         ├── rsi.js
         └── …
 ```
+
+The frontend is loaded as a single `<script type="module">` (`app.js`); the
+browser resolves the `modules/` and `indicators/` imports natively, so there's
+still no bundler or build step.
 
 ## Key design points
 
@@ -34,7 +51,8 @@ Finance_Plot/
   The backend and the browser pick it up automatically.
 - **Shared Hyperliquid websocket** — the browser opens **one** websocket and
   multiplexes it by `(coin, interval)` with ref-counted subscribe/unsubscribe
-  and exponential-backoff auto-reconnect (`static/app.js`, the `HL` object).
+  and exponential-backoff auto-reconnect (`static/modules/hyperliquid.js`, the
+  `HL` object).
 - **Yahoo has no public stream**, so a 5 s `/api/quote` poll folds the live
   price into the current candle while a 60 s `/api/history` refetch rolls in
   new bars correctly.
@@ -47,15 +65,32 @@ Finance_Plot/
     fingerprint, so Yahoo's v8 chart API doesn't rate-limit us (HTTP 429).
 - **Grid layouts** — `1` full, `2` side-by-side, `4` = 2×2, `6` = 3×2,
   `8` = 4×2, with responsive fallbacks for narrow screens.
-- **Persistence** — chart count + every pane's `(source, symbol, timeframe)`
-  is saved in `localStorage` under `mcd:v1:state`, so a reload restores your
-  exact layout.
+- **Persistence** — chart count + every pane's `(source, symbol, timeframe,
+  indicators)` is saved in `localStorage` under `mcd:v2:state` (versioned, with
+  a safe fallback if the stored layout is incompatible), so a reload restores
+  your exact layout.
 - **Colour-coded ticker** flashes green/red (`.ticker-up` / `.ticker-down`) on
   every price change.
 - **Market status badges** — the top bar shows live `HL live` plus `US market`
   (NYSE 09:30–16:00 ET) and `IN market` (NSE 09:15–15:30 IST) open/closed,
-  computed timezone-aware in `app.js` (`updateMarketStatus`) and refreshed every
-  30 s. (Holidays are not accounted for — hours only.)
+  computed timezone-aware in `static/modules/marketStatus.js` and refreshed
+  every 30 s. (Holidays are not accounted for — hours only.)
+
+## Robustness notes
+
+The frontend is defensive in a few deliberate places so it stays stable during
+long live sessions:
+
+- **Per-indicator error isolation** — a throwing indicator is caught and logged
+  in `indicatorEngine.js`; it never breaks the render loop or the websocket feed.
+- **Explicit pane lifecycle** — `Pane.destroy()` tears down timers, the resize
+  observer, the websocket subscription and the chart, and a `destroyed` guard
+  stops any late async callback (fetch/poll/socket) touching a disposed chart.
+- **Candle sanitization** — `validate.js` drops NaN/missing fields, sorts by
+  time and de-duplicates before anything is plotted.
+- **Debounced resize** — chart resizes are coalesced to avoid relayout storms.
+- **Versioned persistence** — see above; a stale/garbage saved layout can't
+  crash startup.
 
 ## Indicators
 
@@ -77,9 +112,9 @@ chart is split evenly among active oscillators).
 ### How the indicator system is wired (modular, auto-discovered)
 
 Each indicator is **one self-contained ES module** in `static/indicators/`. On
-load the backend's `/api/indicators` endpoint lists the folder, and `app.js`
-dynamically `import()`s every file. There is **no central registry** — adding an
-indicator means adding a file, nothing else.
+load the backend's `/api/indicators` endpoint lists the folder, and the frontend
+(`modules/indicatorRegistry.js`) dynamically `import()`s every file. There is
+**no central registry** — adding an indicator means adding a file, nothing else.
 
 A module default-exports a single object:
 
