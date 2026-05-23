@@ -8,11 +8,11 @@ It does these jobs:
   2. tells the browser which data sources exist (/api/sources)
   3. lists the auto-discovered indicator modules (/api/indicators)
   4. proxies history + quotes so the browser never hits CORS walls
-     (Yahoo and Hyperliquid REST do not send permissive CORS headers)
+  5. dynamic symbol search across providers (/api/search)
 
 Live crypto candles do NOT go through here -- the browser talks to
 Hyperliquid's public websocket directly. This server only bridges the
-request/response data sources (currently Yahoo).
+request/response data sources (Yahoo) and symbol search.
 
 Run:
     python app.py
@@ -23,7 +23,7 @@ import os
 
 from flask import Flask, jsonify, request, render_template
 
-import data_source as ds
+import data_sources as ds
 
 app = Flask(__name__)
 
@@ -53,8 +53,23 @@ def api_indicators():
 
 @app.route("/api/sources")
 def api_sources():
-    """List of sources + their timeframes/symbols/realtime config."""
+    """List of sources + their timeframes/default symbols/capabilities."""
     return jsonify(ds.list_sources_meta())
+
+
+@app.route("/api/search")
+def api_search():
+    """Dynamic symbol search for one source: /api/search?source=&q="""
+    source = request.args.get("source", "")
+    query = request.args.get("q", "")
+    try:
+        return jsonify({"source": source, "query": query,
+                        "results": ds.search_symbols(source, query)})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except Exception as exc:
+        app.logger.exception("search failed")
+        return jsonify({"error": str(exc)}), 502
 
 
 @app.route("/api/history")
@@ -63,14 +78,12 @@ def api_history():
     source = request.args.get("source", "")
     symbol = request.args.get("symbol", "")
     timeframe = request.args.get("timeframe", "")
-
-    src = ds.get_source(source)
-    if not src:
-        return jsonify({"error": f"unknown source '{source}'"}), 404
     try:
-        rows = src["history"](symbol, timeframe)
+        rows = ds.get_history(source, symbol, timeframe)
         return jsonify({"source": source, "symbol": symbol,
                         "timeframe": timeframe, "candles": rows})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
     except Exception as exc:
         app.logger.exception("history failed")
         return jsonify({"error": str(exc)}), 502
@@ -81,12 +94,10 @@ def api_quote():
     """Latest price for one (source, symbol). Polled by non-streaming sources."""
     source = request.args.get("source", "")
     symbol = request.args.get("symbol", "")
-
-    src = ds.get_source(source)
-    if not src:
-        return jsonify({"error": f"unknown source '{source}'"}), 404
     try:
-        return jsonify({"source": source, "symbol": symbol, **src["quote"](symbol)})
+        return jsonify({"source": source, "symbol": symbol, **ds.get_quote(source, symbol)})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
     except Exception as exc:
         app.logger.exception("quote failed")
         return jsonify({"error": str(exc)}), 502
